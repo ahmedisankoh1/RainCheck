@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Search, MapPin } from 'lucide-react';
+import { fetchCurrentWeather, searchLocations, type LocationData } from '@/services/weatherApi';
 
 /**
  * SearchBox Component
@@ -13,6 +14,9 @@ import { Search, MapPin } from 'lucide-react';
  */
 const SearchBox: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [suggestions, setSuggestions] = useState<LocationData[]>([]);
+  const [localError, setLocalError] = useState<string>('');
+  const [suggestLoading, setSuggestLoading] = useState<boolean>(false);
 
   /**
    * Handles the form submission when user searches for a city
@@ -21,10 +25,46 @@ const SearchBox: React.FC = () => {
    * @param e - React form event object from the form submission
    * @returns void
    */
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Searching for:', searchQuery);
-    // TODO: Implement weather search functionality
+    if (!searchQuery.trim()) return;
+    try {
+      // loading event start
+      window.dispatchEvent(new CustomEvent('weather:loading', { detail: { type: 'current', loading: true } }));
+      const data = await fetchCurrentWeather(searchQuery.trim());
+      // notify components about current weather update
+      window.dispatchEvent(new CustomEvent('weather:current-updated', { detail: { data } }));
+      // notify selected location for other consumers (e.g., forecast)
+      window.dispatchEvent(new CustomEvent('weather:location-selected', { detail: { location: searchQuery.trim() } }));
+    } catch (error: any) {
+      window.dispatchEvent(new CustomEvent('weather:error', { detail: { type: 'current', message: error?.message || 'Failed to fetch weather' } }));
+    } finally {
+      window.dispatchEvent(new CustomEvent('weather:loading', { detail: { type: 'current', loading: false } }));
+    }
+  };
+
+  /**
+   * Loads location suggestions based on the current query
+   * This function is used to provide live autocomplete suggestions under the input
+   * 
+   * @param query - Current input value
+   * @returns Promise<void>
+   */
+  const loadSuggestions = async (query: string): Promise<void> => {
+    if (!query.trim()) {
+      setSuggestions([]);
+      return;
+    }
+    try {
+      setSuggestLoading(true);
+      setLocalError('');
+      const results = await searchLocations(query.trim());
+      setSuggestions(results);
+    } catch (err: any) {
+      setLocalError(err?.message || 'Failed to load suggestions');
+    } finally {
+      setSuggestLoading(false);
+    }
   };
 
   /**
@@ -34,8 +74,51 @@ const SearchBox: React.FC = () => {
    * @param e - React change event object from the input field
    * @returns void
    */
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
+  const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+    // debounce-like basic approach: trigger fetch immediately for simplicity
+    loadSuggestions(value);
+  };
+
+  /**
+   * Handles selection of a suggestion to fetch weather by coordinates
+   * This function is used to fetch current weather using precise lat/lon for better accuracy
+   * 
+   * @param suggestion - Selected location suggestion with name, country, lat, lon
+   * @returns Promise<void>
+   */
+  const handleSelectSuggestion = async (suggestion: LocationData): Promise<void> => {
+    const cityLabel = `${suggestion.name}, ${suggestion.country}`;
+    setSearchQuery(cityLabel);
+    setSuggestions([]);
+    try {
+      window.dispatchEvent(new CustomEvent('weather:loading', { detail: { type: 'current', loading: true } }));
+      // fetch by coordinates
+      const { VITE_WEATHER_API_KEY, VITE_WEATHER_API_URL } = import.meta.env as any;
+      const apiKey = VITE_WEATHER_API_KEY as string;
+      const apiBase = (VITE_WEATHER_API_URL as string) || 'https://api.openweathermap.org/data/2.5';
+      const url = `${apiBase}/weather?lat=${suggestion.lat}&lon=${suggestion.lon}&appid=${apiKey}&units=metric`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Weather API error: ${response.status}`);
+      const json = await response.json();
+      const data = {
+        temperature: Math.round(json.main.temp),
+        condition: json.weather?.[0]?.main ?? 'Unknown',
+        humidity: json.main.humidity,
+        windSpeed: json.wind.speed,
+        visibility: Math.round((json.visibility ?? 0) / 1000),
+        icon: json.weather?.[0]?.icon ?? '01d',
+        location: cityLabel,
+      };
+      window.dispatchEvent(new CustomEvent('weather:current-updated', { detail: { data } }));
+      window.dispatchEvent(new CustomEvent('weather:location-selected', { detail: { location: cityLabel } }));
+    } catch (error: any) {
+      setLocalError(error?.message || 'Failed to fetch weather for selection');
+      window.dispatchEvent(new CustomEvent('weather:error', { detail: { type: 'current', message: error?.message || 'Failed to fetch weather' } }));
+    } finally {
+      window.dispatchEvent(new CustomEvent('weather:loading', { detail: { type: 'current', loading: false } }));
+    }
   };
 
   return (
@@ -69,11 +152,32 @@ const SearchBox: React.FC = () => {
             </Button>
           </form>
 
-          {/* Placeholder for search results */}
-          <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600 text-center">
-              Search results will appear here
-            </p>
+          {/* Suggestions */}
+          <div className="mt-2">
+            {localError && (
+              <p className="text-sm text-red-600 mb-2">{localError}</p>
+            )}
+            {suggestLoading && (
+              <p className="text-sm text-gray-500">Loading suggestions...</p>
+            )}
+            {!suggestLoading && suggestions.length > 0 && (
+              <ul className="bg-white border rounded-md divide-y">
+                {suggestions.map((s, idx) => (
+                  <li key={`${s.name}-${s.lat}-${s.lon}-${idx}`}>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center justify-between"
+                      onClick={() => handleSelectSuggestion(s)}
+                    >
+                      <span>
+                        {s.name}, {s.country}
+                      </span>
+                      <span className="text-xs text-gray-500">{s.lat.toFixed(2)}, {s.lon.toFixed(2)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </CardContent>
       </Card>

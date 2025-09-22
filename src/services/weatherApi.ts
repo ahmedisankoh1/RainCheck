@@ -35,6 +35,20 @@ export interface LocationData {
 }
 
 /**
+ * Resolves environment variables for the weather API from Vite env
+ * This function centralizes env access to ensure consistency in Vite-based projects
+ * 
+ * @returns { apiKey: string; apiBase: string; geoBase: string }
+ */
+function getEnv(): { apiKey: string; apiBase: string; geoBase: string } {
+  const apiKey = import.meta.env.VITE_WEATHER_API_KEY as string | undefined;
+  const apiBase = (import.meta.env.VITE_WEATHER_API_URL as string | undefined) || 'https://api.openweathermap.org/data/2.5';
+  const geoBase = (import.meta.env.VITE_WEATHER_GEO_API_URL as string | undefined) || 'https://api.openweathermap.org/geo/1.0';
+  if (!apiKey) throw new Error('Weather API key is not configured');
+  return { apiKey, apiBase, geoBase };
+}
+
+/**
  * Fetches current weather data for a specific location from external weather API
  * This function is used to retrieve real-time weather information including temperature, conditions, humidity, wind speed, and visibility for display in the weather dashboard
  * 
@@ -43,19 +57,23 @@ export interface LocationData {
  */
 export const fetchCurrentWeather = async (location: string): Promise<WeatherData> => {
   try {
-    // TODO: Replace with actual API call to OpenWeatherMap
-    console.log('Fetching current weather for:', location);
-    
-    // Placeholder response
-    return {
-      temperature: 22,
-      condition: 'Sunny',
-      humidity: 65,
-      windSpeed: 12,
-      visibility: 10,
-      icon: '☀️',
-      location: location
+    const { apiKey, apiBase } = getEnv();
+    const url = `${apiBase}/weather?q=${encodeURIComponent(location)}&appid=${apiKey}&units=metric`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Weather API error: ${response.status}`);
+    }
+    const json = await response.json();
+    const mapped: WeatherData = {
+      temperature: Math.round(json.main.temp),
+      condition: json.weather?.[0]?.main ?? 'Unknown',
+      humidity: json.main.humidity,
+      windSpeed: json.wind.speed,
+      visibility: Math.round((json.visibility ?? 0) / 1000),
+      icon: json.weather?.[0]?.icon ?? '01d',
+      location: `${json.name}, ${json.sys?.country ?? ''}`.trim(),
     };
+    return mapped;
   } catch (error) {
     console.error('Error fetching current weather:', error);
     throw new Error('Failed to fetch current weather data');
@@ -71,54 +89,24 @@ export const fetchCurrentWeather = async (location: string): Promise<WeatherData
  */
 export const fetchForecast = async (location: string): Promise<ForecastData[]> => {
   try {
-    // TODO: Replace with actual API call to OpenWeatherMap
-    console.log('Fetching forecast for:', location);
-    
-    // Placeholder response
-    const forecast: ForecastData[] = [
-      {
-        date: '2024-01-15',
-        temperature: { min: 18, max: 25 },
-        condition: 'Sunny',
-        icon: '☀️',
-        humidity: 60,
-        windSpeed: 10
-      },
-      {
-        date: '2024-01-16',
-        temperature: { min: 16, max: 23 },
-        condition: 'Partly Cloudy',
-        icon: '⛅',
-        humidity: 70,
-        windSpeed: 15
-      },
-      {
-        date: '2024-01-17',
-        temperature: { min: 14, max: 20 },
-        condition: 'Rainy',
-        icon: '🌧️',
-        humidity: 85,
-        windSpeed: 20
-      },
-      {
-        date: '2024-01-18',
-        temperature: { min: 12, max: 18 },
-        condition: 'Cloudy',
-        icon: '☁️',
-        humidity: 75,
-        windSpeed: 12
-      },
-      {
-        date: '2024-01-19',
-        temperature: { min: 15, max: 22 },
-        condition: 'Sunny',
-        icon: '☀️',
-        humidity: 65,
-        windSpeed: 8
-      }
-    ];
-    
-    return forecast;
+    const { apiKey, apiBase } = getEnv();
+    const url = `${apiBase}/forecast?q=${encodeURIComponent(location)}&appid=${apiKey}&units=metric`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Forecast API error: ${response.status}`);
+    }
+    const json = await response.json();
+    // Take midday points for next 5 days
+    const byNoon = json.list.filter((entry: any) => entry.dt_txt.includes('12:00:00')).slice(0, 5);
+    const mapped: ForecastData[] = byNoon.map((entry: any) => ({
+      date: entry.dt_txt.split(' ')[0],
+      temperature: { min: Math.round(entry.main.temp_min), max: Math.round(entry.main.temp_max) },
+      condition: entry.weather?.[0]?.main ?? 'Unknown',
+      icon: entry.weather?.[0]?.icon ?? '01d',
+      humidity: entry.main.humidity,
+      windSpeed: entry.wind.speed,
+    }));
+    return mapped;
   } catch (error) {
     console.error('Error fetching forecast:', error);
     throw new Error('Failed to fetch forecast data');
@@ -134,18 +122,20 @@ export const fetchForecast = async (location: string): Promise<ForecastData[]> =
  */
 export const searchLocations = async (query: string): Promise<LocationData[]> => {
   try {
-    // TODO: Replace with actual API call to geocoding service
-    console.log('Searching locations for:', query);
-    
-    // Placeholder response
-    return [
-      {
-        name: query,
-        country: 'US',
-        lat: 40.7128,
-        lon: -74.0060
-      }
-    ];
+    const { apiKey, geoBase } = getEnv();
+    const url = `${geoBase}/direct?q=${encodeURIComponent(query)}&limit=5&appid=${apiKey}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Geo API error: ${response.status}`);
+    }
+    const json = await response.json();
+    const results: LocationData[] = (json as any[]).map((item) => ({
+      name: item.name as string,
+      country: item.country as string,
+      lat: item.lat as number,
+      lon: item.lon as number,
+    }));
+    return results;
   } catch (error) {
     console.error('Error searching locations:', error);
     throw new Error('Failed to search locations');

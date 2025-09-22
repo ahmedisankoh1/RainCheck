@@ -79,8 +79,11 @@ interface Database {
 }
 
 // Placeholder Supabase client class
+import { createClient, type SupabaseClient as RawSupabaseClient } from '@supabase/supabase-js';
+
 class SupabaseClient {
   private config: SupabaseConfig | null = null;
+  private supabase: RawSupabaseClient | null = null;
 
   constructor() {
     this.initializeClient();
@@ -107,6 +110,7 @@ class SupabaseClient {
       anonKey: supabaseAnonKey
     };
 
+    this.supabase = createClient(supabaseUrl, supabaseAnonKey);
     console.log('Supabase client initialized');
   }
 
@@ -139,8 +143,9 @@ class SupabaseClient {
    * @returns Promise<void> - Resolves when authentication is successful
    */
   public async signIn(email: string, password: string): Promise<void> {
-    console.log('Sign in placeholder:', { email });
-    // TODO: Implement actual Supabase authentication
+    if (!this.supabase) throw new Error('Supabase not configured');
+    const { error } = await this.supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
   }
 
   /**
@@ -152,8 +157,9 @@ class SupabaseClient {
    * @returns Promise<void> - Resolves when account creation is successful
    */
   public async signUp(email: string, password: string): Promise<void> {
-    console.log('Sign up placeholder:', { email });
-    // TODO: Implement actual Supabase authentication
+    if (!this.supabase) throw new Error('Supabase not configured');
+    const { error } = await this.supabase.auth.signUp({ email, password });
+    if (error) throw error;
   }
 
   /**
@@ -164,8 +170,9 @@ class SupabaseClient {
    * @returns Promise<void> - Resolves when the location is successfully saved to the database
    */
   public async saveLocation(locationData: Database['public']['Tables']['saved_locations']['Insert']): Promise<void> {
-    console.log('Save location placeholder:', locationData);
-    // TODO: Implement actual Supabase database operation
+    if (!this.supabase) throw new Error('Supabase not configured');
+    const { error } = await this.supabase.from('saved_locations').insert(locationData);
+    if (error) throw error;
   }
 
   /**
@@ -176,9 +183,14 @@ class SupabaseClient {
    * @returns Promise<Database['public']['Tables']['saved_locations']['Row'][]> - Array of saved location objects containing id, user_id, name, country, coordinates, and creation timestamp
    */
   public async getSavedLocations(userId: string): Promise<Database['public']['Tables']['saved_locations']['Row'][]> {
-    console.log('Get saved locations placeholder:', { userId });
-    // TODO: Implement actual Supabase database operation
-    return [];
+    if (!this.supabase) throw new Error('Supabase not configured');
+    const { data, error } = await this.supabase
+      .from('saved_locations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data as any) ?? [];
   }
 
   /**
@@ -189,8 +201,9 @@ class SupabaseClient {
    * @returns Promise<void> - Resolves when the weather alert is successfully created and saved
    */
   public async createWeatherAlert(alertData: Database['public']['Tables']['weather_alerts']['Insert']): Promise<void> {
-    console.log('Create weather alert placeholder:', alertData);
-    // TODO: Implement actual Supabase database operation
+    if (!this.supabase) throw new Error('Supabase not configured');
+    const { error } = await this.supabase.from('weather_alerts').insert(alertData);
+    if (error) throw error;
   }
 
   /**
@@ -201,9 +214,14 @@ class SupabaseClient {
    * @returns Promise<Database['public']['Tables']['weather_alerts']['Row'][]> - Array of weather alert objects containing id, user_id, location_id, alert_type, threshold_value, active status, and creation timestamp
    */
   public async getWeatherAlerts(userId: string): Promise<Database['public']['Tables']['weather_alerts']['Row'][]> {
-    console.log('Get weather alerts placeholder:', { userId });
-    // TODO: Implement actual Supabase database operation
-    return [];
+    if (!this.supabase) throw new Error('Supabase not configured');
+    const { data, error } = await this.supabase
+      .from('weather_alerts')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data as any) ?? [];
   }
 }
 
