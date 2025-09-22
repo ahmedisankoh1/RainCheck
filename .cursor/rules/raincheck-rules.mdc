@@ -1,0 +1,56 @@
+---
+description: Core rules and architectural guidelines for RainCheck Weather App.
+globs:
+  - "**/*.tsx"
+  - "**/*.ts"
+  - "**/*.jsx"
+  - "**/*.js"
+  - "**/*.json"
+  - "**/*.md"
+  - "**/*.mdc"
+alwaysApply: true
+---
+
+# RainCheck Project Rules (Cursor Optimized)
+
+## Technology Stack
+
+- **Language**: TypeScript
+- **Framework**: Next.js (App Router)
+- **Database/Auth**: Supabase
+- **Styling**: Tailwind CSS + shadcn/ui
+- **State Management**: Server Components for server state, useState/useReducer for local state
+- **API**: OpenWeatherMap (or similar), Server Actions for mutations
+- **Utilities**: date-fns
+
+## Directory Structure
+
+- `/app` → routes/pages
+- `/components/ui` → shadcn/ui components
+- `/components/` → custom reusable components
+- `/lib` → Supabase client, API wrappers, Server Actions
+
+## Component & Code Guidelines
+
+- Use Server Components for fetching and displaying data; Client Components only for interactive UI
+- Component files: PascalCase (WeatherCard.tsx)
+- Utilities/API functions: camelCase (fetchWeather.ts)
+- Wrap API calls in try/catch and handle errors gracefully
+- Load all API keys from environment variables (.env.local)
+- Use shadcn/ui for UI elements (cards, buttons, inputs, modals)
+
+## Code Patterns
+
+- Fetch weather data via /services/weatherApi.ts
+- Use Server Actions for saving locations or enabling alerts
+- Avoid client-side fetches in pages (useEffect + useState)
+- Keep components small, reusable, and composable
+
+## Verification Checklist
+
+- [ ] Server Components used for data fetching?
+- [ ] Server Actions used for mutations?
+- [ ] Supabase client used for all DB interactions?
+- [ ] API keys loaded from environment variables, not hardcoded?
+- [ ] shadcn/ui components used consistently?
+- [ ] API fetching abstracted in service utilities, not directly in components?
